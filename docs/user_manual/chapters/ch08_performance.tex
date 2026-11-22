@@ -1,0 +1,71 @@
+\chapter{Measuring Cost and Controlling Numerical Error}
+\label{ch:perf}
+
+The cost of a response estimate depends on the actual host and neural
+derivative calls, the state dimension, and the conditioning of the coupled
+cycle. Measure these quantities for the intended problem before drawing
+conclusions about application performance.
+
+\section{Matrix-Free Work and Storage}
+Each application of the response operator evaluates the composed JVP and
+subtracts it from the trial vector. Restarted GMRES stores a bounded
+Arnoldi basis and performs orthogonalization against that basis. For state
+dimension $N$ and restart length $m$, basis storage scales as $O(Nm)$;
+the work also includes the derivative callbacks and orthogonalization.
+A smaller restart reduces storage but can increase the number of iterations.
+
+Iteration counts and projected conditioning diagnostics are useful for
+profiling. They do not certify the true equation defect, the full-space
+inverse norm, or wall-clock acceleration. For residual $r$ and computed
+response $\Delta$, check independently
+\[
+  \frac{\|\Delta-K\Delta-r\|}{\|r\|}.
+\]
+Use the same coordinates, dtype and complete cycle derivative as the solve.
+Chapter~\ref{ch:output} explains the returned diagnostics.
+
+\section{Preconditioning}
+\label{sec:precond}
+An approximate inverse from the host can reduce the work required by
+GMRES. It must act in the declared state coordinates and be used through
+the documented preconditioner interface. A reference-physics derivative
+may help construct a preconditioner; the solved operator must still
+differentiate the actual surrogate-coupled cycle. Check the true equation
+defect after applying any preconditioner.
+
+\section{Reusing Propagated Residual Bases}
+For one fixed cycle derivative, a low-dimensional residual basis can be
+propagated once and reused. If
+$r_i=\bar r+\sum_j c_{ij}v_j$, linearity gives
+\[
+  G r_i=G\bar r+\sum_j c_{ij}Gv_j.
+\]
+Account for the mean response when it is nonzero. Changing the state,
+physical parameters, or derivative invalidates reuse of the old operator
+unless the resulting approximation is separately controlled. PCA fitting,
+basis solves, reconstruction, memory transfers and calibration all
+contribute to cost. A reduction in the number of solves is not by itself
+a measured wall-clock speedup.
+
+\section{Precision and Reproducible Timing}
+Near-marginal feedback can magnify both surrogate perturbations and
+numerical errors. The reference calculations use float64 at the state and
+solver boundaries. Keep scaling and conservation coordinates consistent;
+enabling float64 only at the final output does not recover information
+lost in intermediate calculations. With JAX, enable its float64 mode
+before creating arrays.
+
+The supplied examples provide verification targets:
+\begin{lstlisting}[language=bash]
+python examples/structured_response.py
+python examples/scf_response.py
+\end{lstlisting}
+The second command requires the electronic-structure extra. When timing,
+state whether model loading, compilation, setup and transfer costs are
+included, and whether the measured run reuses cached work. Record the
+state dimension, restart and stopping settings, derivative precision,
+and independently checked equation defect alongside elapsed time.
+
+Use a consistent numerical environment and a declared thread count for
+comparisons. The reference examples are mechanism and integration checks;
+production-scale performance must be measured in the intended host.

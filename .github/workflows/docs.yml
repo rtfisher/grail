@@ -1,0 +1,23 @@
+name: Technical documentation
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'logo/**', 'tools/build_docs.py', '.github/workflows/docs.yml']
+  pull_request:
+    paths: ['docs/**', 'logo/**', 'tools/build_docs.py', '.github/workflows/docs.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  guides:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y latexmk texlive-latex-extra texlive-fonts-recommended texlive-science
+      - run: python tools/build_docs.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: technical-guides
+          path: |
+            docs/user_manual/grail_user_manual.pdf
+            docs/reference_guide/grail_reference_guide.pdf

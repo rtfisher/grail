@@ -1,0 +1,156 @@
+% wolfram_io.sty -- In[n]:= / Out[n]= code-block environments
+%   styled after the Wolfram Mathematica book layout:
+%   * labels project into the left margin (NO box, NO background, NO frame)
+%   * label is monospaced and the body code is monospaced; only color
+%     and weight distinguish the label from the code
+%   * generous vertical whitespace between paired In/Out blocks
+%
+% Provides:
+%   \grailInLabel{n}                  -- prints "In[n]:=" in the left margin
+%   \grailOutLabel{n}                 -- prints "Out[n]=" in the left margin
+%   \grailNote{text}                  -- short italic note between In/Out pairs
+%
+% Usage in document body (verbatim environments cannot be captured in macros,
+% so the package uses a two-step pattern: label macro + listings environment):
+%
+%   \grailInLabel{1}
+%   \begin{lstlisting}[style=grailInStyle]
+%   import torch
+%   from grail import resolvent_solve
+%   \end{lstlisting}
+%
+%   \grailOutLabel{1}
+%   \begin{lstlisting}[style=grailOutStyle]
+%   ResolventResult(...)
+%   \end{lstlisting}
+%
+% Numbering is manual (per PLAN.md \S3.2 — avoids brittleness across
+% chapter splits).
+%
+% Dependencies: listings, xcolor (must be loaded before this package).
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{wolfram_io}[2026/05/10 GRAIL User Manual In/Out environments]
+
+\RequirePackage{listings}
+\RequirePackage{xcolor}
+
+% -------------------------------------------------------------------------
+% Color palette
+%
+% The Mathematica book uses red-orange for input prompts and a muted
+% gray for output prompts.  Code is rendered in plain black; only the
+% prompts and a few syntactic categories carry colour.
+% -------------------------------------------------------------------------
+\definecolor{grailLabelIn}{HTML}{B03000}   % red-orange (In[ ]:=)
+\definecolor{grailLabelOut}{HTML}{505050}  % medium gray (Out[ ]=)
+\definecolor{grailKw}{HTML}{2050A0}        % keyword blue
+\definecolor{grailStr}{HTML}{1A6A20}       % string green
+\definecolor{grailCmt}{HTML}{707070}       % comment gray
+
+% -------------------------------------------------------------------------
+% Geometry
+%
+% \grailGutter is the horizontal distance from the listing's left
+% edge back to where the In[ ]:= / Out[ ]= label sits.  Mathematica's
+% book reserves roughly 8 to 12 mm; we pick 9 mm so labels read as
+% "in the margin" without crowding the listing.
+% -------------------------------------------------------------------------
+\newlength{\grailGutter}
+\setlength{\grailGutter}{9mm}
+
+% -------------------------------------------------------------------------
+% Listings style: Python input cell
+%
+% No background, no frame.  The visual cue is the margin label, not a box.
+% xleftmargin matches \grailGutter so the listing body lines up cleanly
+% with where the prompt's right edge falls.
+% -------------------------------------------------------------------------
+\lstdefinestyle{grailInStyle}{%
+  language=Python,%
+  basicstyle=\ttfamily\small,%
+  keywordstyle=\color{grailKw},%
+  stringstyle=\color{grailStr},%
+  commentstyle=\color{grailCmt}\itshape,%
+  backgroundcolor=\color{white},%
+  frame=none,%
+  xleftmargin=\grailGutter,%
+  xrightmargin=0pt,%
+  breaklines=true,%
+  breakatwhitespace=false,%
+  showstringspaces=false,%
+  tabsize=4,%
+  numbers=none,%
+  aboveskip=2pt,%
+  belowskip=2pt,%
+  morekeywords={torch,np,from,import,as,def,return,None,True,False,%
+                lambda,with,for,in,if,else,elif,class,pass,yield,%
+                assert,raise,try,except,finally,self,print},%
+}
+
+% -------------------------------------------------------------------------
+% Listings style: output cell
+% -------------------------------------------------------------------------
+\lstdefinestyle{grailOutStyle}{%
+  basicstyle=\ttfamily\small,%
+  backgroundcolor=\color{white},%
+  frame=none,%
+  xleftmargin=\grailGutter,%
+  xrightmargin=0pt,%
+  breaklines=true,%
+  breakatwhitespace=false,%
+  showstringspaces=false,%
+  numbers=none,%
+  aboveskip=2pt,%
+  belowskip=2pt,%
+}
+
+% -------------------------------------------------------------------------
+% \grailMarginLabel{color}{text}
+%   Internal helper.  Places `text` in the left margin, right-aligned
+%   against the body left edge, using the supplied color.
+%
+%   The trick: \makebox[0pt][r]{...} makes a zero-width right-aligned
+%   box, so the content sits to the LEFT of the current insertion
+%   point.  Combined with \noindent and a \par-break before the
+%   following lstlisting, the label appears flush in the gutter at the
+%   same vertical position as the listing's first line.
+% -------------------------------------------------------------------------
+\newcommand{\grailMarginLabel}[2]{%
+  \par\addvspace{6pt}%
+  \noindent
+  \makebox[0pt][r]{%
+    \color{#1}\ttfamily\small #2\hspace{4pt}%
+  }%
+  \nopagebreak[4]\par\nobreak\vspace{-1.2\baselineskip}%
+}
+
+% -------------------------------------------------------------------------
+% \grailInLabel{n}  -- "In[n]:=" in the left margin, aligned with the
+%                     first line of the lstlisting that follows.
+% -------------------------------------------------------------------------
+\newcommand{\grailInLabel}[1]{%
+  \grailMarginLabel{grailLabelIn}{In[#1]:=}%
+}
+
+% -------------------------------------------------------------------------
+% \grailOutLabel{n}  -- "Out[n]=" in the left margin, aligned with the
+%                      first line of the lstlisting that follows.
+% -------------------------------------------------------------------------
+\newcommand{\grailOutLabel}[1]{%
+  \grailMarginLabel{grailLabelOut}{Out[#1]=}%
+}
+
+% -------------------------------------------------------------------------
+% \grailNote{text}  -- short italic explanatory note between blocks.
+%   Indented to align with the listing body (i.e. inside the gutter),
+%   not the chapter body's left margin, so notes read as commentary on
+%   the surrounding code rather than on the chapter prose.
+% -------------------------------------------------------------------------
+\newcommand{\grailNote}[1]{%
+  \par\addvspace{3pt}%
+  \noindent\hspace{\grailGutter}{\small\itshape #1}%
+  \par\addvspace{3pt}%
+}
+
+\endinput

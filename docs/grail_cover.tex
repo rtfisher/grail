@@ -1,0 +1,33 @@
+% Shared cover layout for the user manual and reference guide.
+% Compile either guide from its own directory, as documented in its header.
+\makeatletter
+\newcommand{\makegrailcover}[1]{%
+  \newgeometry{margin=1in}%
+  \hypersetup{pageanchor=false}%
+  \begin{titlepage}
+    \centering
+    \vspace*{0.20in}
+    % Trim the existing image's outer whitespace without changing the asset.
+    \includegraphics[width=0.54\textwidth,
+      trim={350bp 280bp 300bp 420bp},clip]
+      {../../logo/grail_logo_black_on_white_final.png}\par
+    \vspace{0.35in}
+    {\sffamily\bfseries\fontsize{30}{36}\selectfont\@title\par}
+    \vspace{0.22in}
+    {\large Green's-function Resolvent for\\[3pt]
+      AI-accelerated Iteration Libraries\par}
+    \vspace{0.30in}
+    \begin{minipage}{0.90\textwidth}
+      \centering
+      #1\par
+    \end{minipage}\par
+    \vfill
+    {\large\@author\par}
+    \vspace{0.35in}
+    {\small\@date\par}
+    \vspace*{0.15in}
+  \end{titlepage}
+  \restoregeometry
+  \hypersetup{pageanchor=true}%
+}
+\makeatother

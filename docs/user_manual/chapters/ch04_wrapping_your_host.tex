@@ -1,0 +1,94 @@
+\chapter{Wrapping Your Host Code}
+\label{ch:wrapping}
+A surrogate changes one block of a coupled physical iteration. To predict
+its effect on the converged state, GRAIL needs the residual of the complete
+cycle and derivative actions for the two composed blocks.
+
+\section{The Required Inputs}
+\label{sec:five-things}
+Supply a converged surrogate state $x_e$, the signed residual
+$b=\mathcal T_e(x_e)-\mathcal T_t(x_e)$, and two derivative callbacks.
+The callbacks compose as \code{emulator\_jvp(host\_jvp(v))} and must
+represent the actual surrogate-containing cycle. GRAIL solves
+$(I-K_e)p=b$. The estimated reference state is $x_e-p$.
+The residual and both derivatives use the same operating point.
+For a composition $P\circ R$, evaluate $DR$ at $x_e$ and $DP$ at
+$R(x_e)$, rather than reusing the input state for both blocks.
+
+\section{The State-Vector Seam}
+\label{sec:seam}
+Use one documented coordinate system throughout the residual, derivatives,
+solver, and verification target. Both callbacks accept and return flat
+vectors with the agreed shape and precision. Intermediate variables may
+have different physical units; scaling must be consistent with the chain rule.
+For conserved populations, independent coordinates or a conservation-constrained
+tangent avoid redundant state directions. The structured two-level example
+uses $q=n_2$ and reconstructs $n_1=1-q$.
+If both populations are stored, the reference blocked convention is
+\code{populations.T.flatten()}, with inverse
+\code{flat.reshape(2, N\_tau).T}.
+
+\section{Worked Example: The Structured Two-Level Closure}
+\label{sec:twolevel-worked}
+Run the supplied, complete example after installing the numerical extras:
+\begin{lstlisting}[style=grailInStyle]
+python examples/structured_response.py
+\end{lstlisting}
+It loads the supplied learned checkpoint, solves its coupled equilibrium,
+and evaluates the residual there. The host converts populations to source
+functions and transports radiation. The second block is the actual trained
+neural adapter; automatic differentiation follows that adapter, not the
+reference rate-equation solver. Both callbacks use the correct intermediate
+radiation field. A separately solved reference equilibrium supplies the
+verification target after prediction.
+
+The executable example checks the true linear equation defect and compares
+the predicted shift with the independent target. It applies the correction by
+\begin{lstlisting}[style=grailInStyle]
+q_reference_estimate = q_emulator - result.delta_x_star
+\end{lstlisting}
+The complete source shows how to construct each callback without substituting
+a reference Jacobian for the neural one.
+
+\section{Multilevel and Other Host Codes}
+\label{sec:threelevel-worked}
+\label{sec:your-host}
+A multilevel atom changes the state dimension and constraints, not the
+callback contract. A chemistry solver or a compiled host can expose an
+analytic, automatic-differentiation, or independently checked finite-difference
+JVP. Keep units, packing, conservation, and operating points explicit.
+In electronic structure, the neural Fock construction can be the first-applied
+block. The historical callback argument names do not determine which physical
+block contains the neural model; composition order does.
+
+\section{The Four Standard Pitfalls}
+\label{sec:pitfalls}
+\subsection{State-Vector Layout}
+\label{pit:layout}
+Check a pack/unpack round trip and verify the derivative on independent
+coordinate directions. A reshaping error can preserve array sizes while
+changing the physical operator.
+\subsection{Autograd Trace Breakage}
+\label{pit:autograd}
+Converting to NumPy or detaching an intermediate can remove physical feedback
+from the derivative. Compare the composed JVP with finite differences of the
+actual unaccelerated cycle, including diagnostic closures and intermediate states.
+\subsection{Dtype and Device}
+\label{pit:dtype}
+Use consistent float64-equivalent values at the GRAIL boundary. A smooth
+float64 derivative should correspond to the same evaluator used for the cycle.
+\subsection{The Neural Derivative}
+\label{pit:jacobian}
+Differentiate the actual replacement block. A small GMRES residual only checks
+the operator supplied to GMRES; it cannot detect a consistently supplied,
+incorrect reference derivative.
+
+\section{Verification Before Deployment}
+\label{sec:debug-recipe}
+\label{sec:checklist}
+Check the converged-state equation, the signed cycle residual, derivative
+composition against an independent cycle evaluation, the true linear defect,
+and physical observables. Use independently re-equilibrated states to test
+local prediction accuracy. Small per-call mean-square error alone does not
+control feedback derivatives or nonlinear remainders. Chapter~\ref{ch:output}
+explains solver diagnostics; Chapter~\ref{ch:coverage} describes calibration.

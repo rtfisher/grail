@@ -1,0 +1,75 @@
+\chapter{Reading GRAIL Output}
+\label{ch:output}
+GRAIL returns a displacement for the residual and derivative callbacks supplied
+by the caller. Solver convergence and accuracy of the physical prediction are
+separate checks.
+
+\section{The Result Dataclass}
+\label{sec:result-overview}
+\code{ResolventResult} contains \code{delta\_x\_star},
+\code{iter\_count}, \code{residual\_history},
+\code{condition\_estimate}, \code{pca\_rank}, and
+\code{conformal\_intervals}. Arrays use the selected backend.
+Use \code{np.asarray(result.delta\_x\_star)} for a portable NumPy copy.
+
+\section{The Predicted Shift}
+\label{sec:delta-x-star}
+With the emulator-minus-reference residual
+$b=\mathcal T_e(x_e)-\mathcal T_t(x_e)$, the returned displacement
+estimates $x_e-x_t$. Therefore
+\begin{equation}
+ x_t^{\mathrm{estimate}}=x_e-\delta x^{*,\mathrm{pred}}.
+\end{equation}
+\begin{lstlisting}[style=grailInStyle]
+reference_estimate = x_emulator - result.delta_x_star
+\end{lstlisting}
+Keep that residual sign convention in both the callback wiring and subsequent
+correction. The approximation concerns a small smooth perturbation, while
+repeated linear feedback is retained to all orders.
+
+\section{GMRES Diagnostics}
+\label{sec:gmres-diag}
+\subsection{Iteration Count}
+\label{sec:iter-count}
+\code{iter\_count} records the number of GMRES iterations. Stopping before
+the maximum is not a convergence certificate: early breakdown can also stop an
+iteration. Check the residual history and independently evaluate the equation
+with the returned displacement.
+\subsection{Residual History and True Equation Defect}
+\label{sec:residual-history}
+For $p=\code{result.delta\_x\_star}$, recompute
+$r=p-\mathrm{emulator\_jvp}(\mathrm{host\_jvp}(p))-b$.
+Compare $\|r\|/\|b\|$ with the requested tolerance when $b\ne0$; for a
+zero right-hand side use an absolute check. This tests the supplied operator.
+Derivative verification against the actual host cycle is an additional step.
+\subsection{Condition Estimate}
+\label{sec:condition}
+\code{condition\_estimate} is obtained from a projected Arnoldi/Hessenberg
+problem. It is a diagnostic, not a certificate of the full-space condition
+number or physical reliability. An infinite estimate can reflect rank deficiency,
+breakdown, or a singular projected problem. Interpret it together with the
+true residual, independent derivative checks, and physical validation.
+
+\section{PCA Rank}
+\label{sec:pca-rank}
+A bare \code{resolvent\_solve} result has \code{pca\_rank=0}.
+PCA residual representation is a separate layer. A zero rank field does not
+establish whether a caller calibrated a prediction elsewhere.
+
+\section{Conformal Bands}
+\label{sec:conformal}
+A bare solve returns \code{conformal\_intervals=None}; it does not construct
+a band automatically. Calibration needs held-out prediction errors against the
+chosen reference target, with a score and sampling protocol fixed beforehand.
+Chapter~\ref{ch:coverage} gives the exact finite-sample procedure.
+
+\section{A Complete Worked Example}
+\label{sec:worked-complete}
+\begin{lstlisting}[style=grailInStyle]
+python examples/structured_response.py
+\end{lstlisting}
+This example uses the current learned neural derivative at the surrogate
+equilibrium, reports its true linear defect, and compares the corrected
+population profile against an independently solved reference. The reported
+shift-prediction error is relative to the actual shift; it is distinct from
+population-relative error or the magnitude of amplification itself.

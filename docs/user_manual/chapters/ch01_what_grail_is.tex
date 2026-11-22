@@ -1,0 +1,279 @@
+% =============================================================================
+% Chapter 1 -- What GRAIL Is
+% =============================================================================
+%
+% Audience prerequisite: none.
+%
+% Reader takeaway: decide in five minutes whether GRAIL is the right tool
+%   for the problem.  Walks away knowing the three usage regimes (standalone,
+%   one-shot chain, iterative outer loop) and which one matches their host code.
+%
+% =============================================================================
+
+\chapter{What GRAIL Is}
+\label{ch:what}
+
+\refguide{1.1}{Scientific Context}
+
+GRAIL quantifies one specific error: the error a learned surrogate introduces
+at the converged fixed point of a coupled iterative simulation.
+That error is not the surrogate's per-call prediction error.
+It is that error summed and amplified by every iteration the surrogate
+participates in before convergence.
+This chapter explains the distinction, identifies the three regimes where
+it matters, and gives the reader a decision flowchart.
+
+% =============================================================================
+\section{The Coupled-Iteration Problem}
+\label{sec:coupled-problem}
+% =============================================================================
+
+\refguide{2.2}{The Coupled-Iteration Uncertainty Problem}
+
+Every converged simulation is a fixed point.
+In radiative transfer, neutrino transport, chemistry networks, and
+implicit time advance, the code iterates radiation against matter
+(or species against species) until the two agree.
+When one block of that iteration is replaced by a neural emulator,
+the emulator's per-call residual $\delta\mathcal{T}$ does not stay localized.
+It propagates forward through every subsequent iteration.
+
+The converged-state error is the resolvent sum of all those propagations:
+\[
+  \delta x^* = (I - D\mathcal{T})^{-1}\,\delta\mathcal{T}(x^*) + O(\|\delta\mathcal{T}\|^2).
+\]
+The operator $(I - D\mathcal{T})^{-1}$ is the resolvent, and it is
+the Green's function of the coupled iteration.
+Its norm $A = \|(I - D\mathcal{T})^{-1}\|$ is the amplification factor:
+how much a single-call residual is magnified before it reaches the converged state.
+Standalone emulator validation measures $\|\delta\mathcal{T}\|$.
+It does not measure $\|\delta x^*\|$.
+In scattering-dominated regimes, $A$ is large and the gap between the two is large.
+
+A point that is easy to misread the first time.
+The resolvent identity is \emph{linear} in $\delta\mathcal{T}$ ---
+doubling the per-call residual doubles the predicted equilibrium shift ---
+but it sums \emph{all orders} in $D\mathcal{T}$.
+Expanding as a geometric series,
+$\delta\mathcal{T} + D\mathcal{T}\,\delta\mathcal{T}
+ + (D\mathcal{T})^2\,\delta\mathcal{T} + \cdots$,
+the sum runs to infinity.
+In the regime where GRAIL matters --- cycle spectral radius near 1 ---
+the tail terms dominate.
+Truncating at the first two terms gives the wrong answer:
+for a scalar positive feedback mode $K=0.99$ (or a residual aligned with
+that eigenvector), two terms give $1.99\,\delta\mathcal{T}$
+while the full sum gives $100\,\delta\mathcal{T}$.
+The matrix-free GMRES inside GRAIL sums the full series in one
+linear-system call without ever materialising the Jacobian.
+
+% =============================================================================
+\section{The Three Regimes}
+\label{sec:three-regimes}
+% =============================================================================
+
+Three qualitatively different ways to embed a learned surrogate exist.
+GRAIL is relevant to exactly one of them.
+
+\medskip
+
+\noindent\textbf{Standalone inference.}
+The surrogate produces a prediction once and the prediction is not fed
+back into the simulation.
+An example is a network that classifies a final image.
+The emulator error is the per-call error; no amplification occurs.
+GRAIL does not apply.
+Standard conformal prediction or held-out validation gives the right
+uncertainty estimate.
+
+\medskip
+
+\noindent\textbf{One-shot chain.}
+The surrogate sits inside a pipeline where each block runs once and passes
+its output forward.
+An example is a surrogate stellar-evolution model followed by a one-time
+atmosphere computation.
+The error propagates through the chain but does not feed back.
+GRAIL does not apply.
+Chain-rule error propagation or Monte Carlo sampling of the chain is the
+right tool.
+
+\medskip
+
+\noindent\textbf{Iterative outer loop.}
+The surrogate replaces one block inside an outer loop that converges to
+a fixed point.
+Every iteration calls the surrogate and passes its output back as the
+next iteration's input.
+This is the regime of NLTE radiative transfer, CCSN neutrino transport,
+stiff chemistry networks, and implicit time advance.
+The emulator error is amplified by the resolvent before it reaches the
+converged state.
+GRAIL applies.
+
+\bigskip
+
+The table below collects the three regimes.
+
+\begin{center}
+\small
+\begin{tabular}{>{\bfseries}p{0.22\textwidth} p{0.28\textwidth} p{0.35\textwidth}}
+\toprule
+Regime & Defining property & Correct tool \\
+\midrule
+Standalone inference
+  & Surrogate called once; no feedback
+  & Standard conformal prediction; held-out validation \\
+One-shot chain
+  & Each block runs once; no outer loop
+  & Chain-rule propagation; MC sampling \\
+Iterative outer loop
+  & Surrogate inside a fixed-point loop
+  & \textbf{GRAIL} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =============================================================================
+\section{A Decision Flowchart}
+\label{sec:flowchart}
+% =============================================================================
+
+The flowchart below walks through four questions.
+Each ``No'' leads to a simpler tool.
+All four ``Yes'' answers lead to GRAIL.
+
+\bigskip
+
+\begin{center}
+\begin{tikzpicture}[
+  decision/.style={diamond, draw, align=center, font=\small,
+                   inner sep=3pt, aspect=2.0,
+                   minimum width=3.6cm, minimum height=1.0cm},
+  action/.style={rectangle, draw, rounded corners=3pt, align=center,
+                 font=\small, inner sep=6pt,
+                 minimum width=3.6cm},
+  grail/.style={rectangle, draw=blue!60!black, fill=blue!8,
+                rounded corners=3pt, align=center, font=\small\bfseries,
+                inner sep=8pt, minimum width=3.6cm},
+  exit/.style={rectangle, draw=gray!70, fill=gray!8, rounded corners=3pt,
+               align=center, font=\small, inner sep=6pt,
+               minimum width=3.8cm},
+  arr/.style={-{Stealth[length=5pt]}, thick},
+  lbl/.style={font=\scriptsize},
+]
+
+% Nodes
+\node[decision] (q1) {Does your simulation\\converge to a\\fixed point?};
+\node[decision, below=1.2cm of q1] (q2) {Is one block inside\\that loop a learned\\surrogate?};
+\node[decision, below=1.2cm of q2] (q3) {Is the surrogate\\called multiple times\\before convergence?};
+\node[decision, below=1.2cm of q3] (q4) {Do you care about\\the \emph{converged-state}\\error, not only\\per-call error?};
+\node[grail, below=1.2cm of q4] (grail) {\textbf{GRAIL applies.}\\Use \texttt{resolvent\_solve}.};
+
+% Right-side exits
+\node[exit, right=2.4cm of q1] (e1) {Standalone inference.\\Standard conformal\\prediction suffices.};
+\node[exit, right=2.4cm of q2] (e2) {No surrogate inside\\the loop.  Standard\\validation suffices.};
+\node[exit, right=2.4cm of q3] (e3) {One-shot chain.\\Chain-rule propagation\\or MC sampling.};
+\node[exit, right=2.4cm of q4] (e4) {Per-call validation\\already gives the\\error you need.};
+
+% Arrows on main path
+\draw[arr] (q1) -- node[lbl,left]{Yes} (q2);
+\draw[arr] (q2) -- node[lbl,left]{Yes} (q3);
+\draw[arr] (q3) -- node[lbl,left]{Yes} (q4);
+\draw[arr] (q4) -- node[lbl,left]{Yes} (grail);
+
+% Arrows to exits
+\draw[arr] (q1) -- node[lbl,above]{No} (e1);
+\draw[arr] (q2) -- node[lbl,above]{No} (e2);
+\draw[arr] (q3) -- node[lbl,above]{No} (e3);
+\draw[arr] (q4) -- node[lbl,above]{No} (e4);
+
+\end{tikzpicture}
+\end{center}
+
+\bigskip
+
+The NLTE testbed bundled with GRAIL answers all four questions ``Yes'':
+the slab iterates radiation and matter to a fixed point;
+the APNN replaces the rate-equation solver inside that loop;
+the APNN is called once per iteration for tens to hundreds of iterations;
+and the science question is the accuracy of the converged populations, not the
+accuracy of any single population prediction.
+
+% =============================================================================
+\section{What GRAIL Computes}
+\label{sec:what-grail-computes}
+% =============================================================================
+
+\refguide{2.4}{Resolvent as a Green's Function}
+
+GRAIL evaluates the resolvent $(I - D\mathcal{T})^{-1}$ matrix-free via GMRES.
+The user supplies four things.
+
+\begin{itemize}
+  \item \texttt{x\_star} --- the emulator's converged fixed point, as a flat
+        float64 tensor of shape \texttt{(N,)}.
+  \item \texttt{delta\_T} --- the surrogate's per-call residual evaluated at
+        \texttt{x\_star}.  Same shape and dtype.
+  \item \texttt{host\_jvp} --- a callable that applies the host block's Jacobian
+        to a vector.  Opaque; GRAIL never inspects it.
+  \item \texttt{emulator\_jvp} --- a callable that applies the emulator block's
+        Jacobian to a vector.  Same contract.
+\end{itemize}
+
+GRAIL returns the predicted correction $\delta x^*$, the GMRES residual history,
+and a condition-number estimate.
+Chapter~\ref{ch:statevec} describes the state-vector convention.
+Chapter~\ref{ch:wrapping} shows how to construct the two JVP callbacks.
+Chapter~\ref{ch:output} describes every field of the result object.
+
+% =============================================================================
+\section{What This Manual Covers}
+\label{sec:manual-scope}
+% =============================================================================
+
+The manual is organized into three parts.
+
+\medskip
+
+\noindent\textbf{Part I: Getting Started} (Chapters 1--2).
+Chapter~1 is this chapter.
+Chapter~\ref{ch:install} covers installation, the conda environment, the
+libomp workaround, and a first green test run.
+
+\medskip
+
+\noindent\textbf{Part II: Using GRAIL} (Chapters 3--6).
+Chapter~\ref{ch:statevec} describes the state-vector seam: the
+level-major packing convention that every JVP callback must follow.
+Chapter~\ref{ch:wrapping} shows how to construct \texttt{host\_jvp} and
+\texttt{emulator\_jvp} for a real host code, including the four standard
+pitfalls.
+Chapter~\ref{ch:output} walks through every field of \texttt{ResolventResult}
+and shows how to read GMRES convergence diagnostics.
+Chapter~\ref{ch:coverage} describes the conformal calibration path: how to
+build a residual ensemble, fit a PCA basis, and produce a coverage band with
+a distribution-free guarantee.
+
+\medskip
+
+\noindent\textbf{Part III: Going Further} (Chapters 7--10).
+Chapter~\ref{ch:debug} provides a symptom-to-cause-to-fix table for the
+most common failure modes.
+Chapter~\ref{ch:perf} explains matrix-free cost, restart storage,
+preconditioning, and reproducible performance measurements.
+Chapter~\ref{ch:recipes} runs the supplied radiative-transfer,
+electronic-structure, climate and calibration examples.
+Chapter~\ref{ch:scf} walks through a second worked application---SCF
+electronic structure on stretched H$_2$ with a neural exchange--correlation
+surrogate---using the same callback interface, unchanged, against a
+structurally distinct host.
+
+\medskip
+
+The GRAIL Reference Guide is the companion document for theory and derivations.
+Where this manual needs the math, it points to the Reference Guide by section
+rather than reproducing the derivation.
+A reader who wants only the ``how'' can work through this manual without the
+Reference Guide.
+A reader who wants the ``why'' finds it there.

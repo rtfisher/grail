@@ -1,0 +1,1 @@
+'Single-column radiative–convective equilibrium reference physics. The controlled smooth surrogate perturbs a state-dependent physical heating law, held fixed when the numerical equilibration timestep changes.'

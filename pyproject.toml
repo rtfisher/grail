@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grail"
+version = "0.1.0a0"
+description = "Matrix-free fixed-point response and calibrated surrogate-error propagation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "R. Fisher", email = "fisher.robert.taylor@gmail.com"}]
+dependencies = ["torch>=2.2,<3.0", "numpy>=1.26,<3.0", "h5py>=3.10,<4.0"]
+
+[project.urls]
+Repository = "https://github.com/rtfisher/grail"
+Issues = "https://github.com/rtfisher/grail/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "scipy>=1.11"]
+examples = ["scipy>=1.11", "matplotlib>=3.7"]
+scf = ["pyscf>=2.6", "scipy>=1.11"]
+jax = ["jax[cpu]>=0.6,<1.0"]
+dev = ["pytest>=8.0", "scipy>=1.11", "build>=1.2", "ruff>=0.5"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["grail*", "atmosphere*", "emulator*", "scf*", "climate_rce*", "decisions*"]
+exclude = ["tests*", "examples*", "docs*", "formalization*", "tools*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+norecursedirs = [".git", ".lake", "build", "dist", "examples/output"]
+markers = [
+  "unit: isolated module checks",
+  "analytic: physical and mathematical analytic anchors",
+  "integration: coupled end-to-end examples",
+  "regression: checks against supplied reference data",
+  "slow: expensive grids, training, or compilation",
+  "jax-skip: expensive JAX compilation checks",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["build", "dist", ".lake"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E501", "F401", "F811", "F841", "B007", "B905", "I001", "F541"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B", "E402"]
+"examples/**/*.py" = ["E402"]

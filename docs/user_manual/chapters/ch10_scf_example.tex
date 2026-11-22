@@ -1,0 +1,60 @@
+\chapter{A Second Application: Electronic Structure}
+\label{ch:scf}
+\chaptermark{Electronic Structure}
+The SCF reference host iterates a density matrix through Fock construction
+and occupied-orbital reconstruction. A neural replacement changes the Fock
+contribution, and the coupled response changes the converged density.
+The same GRAIL interface applies, with coordinates and derivative order
+specified for this physical system.
+
+\section{State and Coordinates}
+For unrestricted H$_2$, the state contains both spin density matrices.
+The seam packs the upper triangle of $P_\alpha$ followed by that of
+$P_\beta$. In STO-3G each matrix is $2\times2$, giving six packed
+components. Off-diagonal entries have weight one in the ordinary packed
+Euclidean metric; that metric differs from the AO Frobenius norm.
+Electron count and projector idempotency constrain physical variations.
+Use the appropriate tangent when measuring a restricted physical response.
+
+\section{The Actual Composed Derivative}
+The neural Fock construction is the first-applied block and density
+reconstruction is second. \code{make\_cycle\_jvps\_scf} returns callbacks
+in that order, evaluating the second derivative at the actual substituted
+Fock matrix. Pass the first callback as \code{host\_jvp} and the second
+as \code{emulator\_jvp}, following GRAIL's composition order.
+Using reference orbitals instead of the orbitals of the substituted Fock
+matrix would differentiate a different cycle.
+
+\section{A Controlled Runnable Example}
+Install the \code{scf} extra, then run
+\begin{lstlisting}[style=grailInStyle]
+python examples/scf_response.py
+\end{lstlisting}
+The example uses H$_2$/STO-3G at $R=1.25$ \AA\ and the supplied learned
+Fock contribution. A controlled family
+$F_\eta=F_t+\eta(F_{\rm NN}-F_t)$ with $\eta=10^{-3}$ tests local response.
+Both reference and perturbed equilibria are solved independently.
+The residual and actual composed derivative are evaluated at the perturbed
+state; GRAIL predicts its displacement from the reference.
+The example checks the true linear defect and the independently measured
+shift-prediction error.
+
+The family contains reference physics and is a verification experiment.
+It does not demonstrate full learned replacement, production accuracy, or a
+speedup. A separate deployment evaluation must test the intended replacement
+and physical population directly.
+
+\section{Physical Checks and Calibration}
+Convergence should be checked with the unaccelerated density-cycle equation,
+not solely a DIIS stopping flag. Verify electron count, symmetry, the relevant
+physical tangent, and derivative composition. Near symmetry breaking the
+inverse can be large; invertibility, iteration stability, and accuracy of a
+finite nonlinear prediction are separate questions.
+A small linear equation defect does not bound nonlinear or Jacobian error.
+Remainder bounds depend on local derivatives and inverse norms. Use independent reference/perturbed solves and a controlled
+amplitude study to assess the local regime.
+
+For uncertainty bands, hold predictor fitting separate from calibration and
+compute errors on the target observable. The marginal conformal guarantee
+requires exchangeability of calibration and test scores; it is not inferred
+from a low training MAE or a small finite test-set coverage deviation.

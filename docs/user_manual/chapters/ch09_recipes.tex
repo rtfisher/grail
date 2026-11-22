@@ -1,0 +1,58 @@
+
+\chapter{Executable Physics Examples}
+\label{ch:recipes}
+
+The examples supplied with the software exercise radiative transfer,
+electronic structure, and a climate column. Each reports numerical
+verification quantities for its declared setup.
+
+\section{Structured Two-Level Radiative Transfer}
+\begin{lstlisting}[language=bash]
+python examples/structured_response.py
+\end{lstlisting}
+This example loads the supplied neural checkpoint and solves the coupled
+surrogate equilibrium. The host and neural callbacks differentiate the
+actual composed cycle at that equilibrium. An independently solved
+reference equilibrium checks the predicted shift. The example reports
+the relative shift error and the true linear equation defect, and verifies
+that subtracting the predicted emulator-minus-reference shift improves
+the state estimate. The same encoder and conserving population decoder
+are used in training and inference.
+
+\section{Electronic-Structure Response}
+\begin{lstlisting}[language=bash]
+python -m pip install -e '.[scf]'
+python examples/scf_response.py
+\end{lstlisting}
+The supplied checkpoint perturbs the non-Hartree Fock contribution in a
+controlled local replacement family. The surrounding electronic solve
+remains classical. Derivatives act on the actual neural cycle; independent
+reference and surrogate equilibria check the predicted displacement.
+This is a local verification example, with no full-replacement speed or
+deployment claim. Chapter~\ref{ch:scf} describes the state conventions.
+
+\section{Climate Response at Fixed Physical Heating}
+\begin{lstlisting}[language=bash]
+python examples/climate_fixed_heating.py --help
+\end{lstlisting}
+The physical, state-dependent heating law is held fixed as the numerical
+equilibration timestep changes. This separates the artificial relaxation
+speed from the physical equilibrium. The driver checks the complete
+cycle derivative and the linear response using independently evaluated
+equation defects. Its affine surrogate is a controlled perturbation,
+rather than an externally trained climate parameterization.
+
+\section{Calibration and Independent Checks}
+\begin{lstlisting}[language=bash]
+python examples/calibration.py
+\end{lstlisting}
+Calibration uses the finite-sample split-conformal order statistic. If
+the available calibration sample cannot support the requested nominal
+level, the radius is infinite. Exchangeability and the chosen coverage
+target remain assumptions; a synthetic calibration check does not
+establish deployment coverage.
+
+For a different host, use the coordinate and callback contracts in
+Chapters~3 and~4. Preserve conservation constraints, evaluate both
+derivatives at consistent intermediate states, and check the true
+linear equation defect independently of GMRES's projected diagnostics.

@@ -1,0 +1,395 @@
+% =============================================================================
+% Chapter 3 -- The State-Vector Seam
+% =============================================================================
+%
+% Audience prerequisite: Chapter 2 (installation and first run).
+%
+% Reader takeaway: after this chapter, the reader can convert a host-code
+%   population array of shape (N_tau, L) to GRAIL's flat blocked form
+%   (L*N_tau,) and back, knowing exactly which slot holds which population
+%   at which depth.
+%
+% Cross-reference note: Chapter 4 defines its own \label{sec:seam} for its
+%   brief seam subsection (§4.2).  This chapter uses \label{sec:two-conventions}
+%   for the canonical treatment so there is no label collision in the master.
+%   When a future Ch 4 copy-edit adds a \ref back here, use \ref{sec:two-conventions}.
+% =============================================================================
+
+\chapter{The State-Vector Seam}
+\label{ch:statevec}
+
+\refguide{6.5}{Tensor Conventions}
+
+Every call to \code{resolvent\_solve} crosses one boundary.
+On one side is your host code's array layout.
+On the other is GRAIL's flat layout.
+That boundary is the state-vector seam.
+Getting it right once makes every subsequent JVP callback correct.
+Getting it wrong produces a wrong answer with no error message.
+
+% =============================================================================
+\section{The Two Conventions}
+\label{sec:two-conventions}
+% =============================================================================
+
+Inside your host code, atomic populations live in a 2-D array of shape
+\code{(N\_tau, L)}.
+Each row is a depth point; each column is an atomic level.
+At the GRAIL boundary, the same data lives in a 1-D flat array of shape
+\code{(L*N\_tau,)}.
+The two conventions exist for different reasons.
+The host code thinks per-depth.
+Row~$i$ holds all level populations at optical depth~$\tau_i$.
+GRAIL is dimension-agnostic.
+It treats state as a flat vector.
+It never inspects the physical meaning of any entry.
+One packing rule connects them: level-major order.
+All depths for level~1 come first, then all depths for level~2, and so on.
+
+% =============================================================================
+\section{The Pack}
+\label{sec:pack}
+% =============================================================================
+
+The operation that converts host-side to GRAIL-side is
+\code{populations.T.flatten()}.
+
+Here is what that means on a small concrete array.
+
+\grailInLabel{1}
+\begin{lstlisting}[style=grailInStyle]
+import torch
+
+N_tau, L = 3, 2   # 3 depth points, 2 atomic levels
+
+# populations[i, l] = fraction of atoms at depth i in level l.
+populations = torch.tensor([
+    [0.9500, 0.0500],   # depth 0: n_1, n_2
+    [0.9200, 0.0800],   # depth 1
+    [0.8900, 0.1100],   # depth 2
+], dtype=torch.float64)   # shape (N_tau, L) = (3, 2)
+
+print("shape:", populations.shape)
+print(populations)
+\end{lstlisting}
+
+\grailOutLabel{1}
+\begin{lstlisting}[style=grailOutStyle]
+shape: torch.Size([3, 2])
+tensor([[0.9500, 0.0500],
+        [0.9200, 0.0800],
+        [0.8900, 0.1100]], dtype=torch.float64)
+\end{lstlisting}
+
+The transpose swaps the axes so that levels become rows and depths become
+columns.
+
+\grailInLabel{2}
+\begin{lstlisting}[style=grailInStyle]
+# Step 1: transpose -> shape (L, N_tau) = (2, 3).
+print("transposed:")
+print(populations.T)
+\end{lstlisting}
+
+\grailOutLabel{2}
+\begin{lstlisting}[style=grailOutStyle]
+transposed:
+tensor([[0.9500, 0.9200, 0.8900],   # level 1 at depths 0, 1, 2
+        [0.0500, 0.0800, 0.1100]], dtype=torch.float64)  # level 2
+\end{lstlisting}
+
+Flattening that row-by-row produces the GRAIL-side vector.
+
+\grailInLabel{3}
+\begin{lstlisting}[style=grailInStyle]
+# Step 2: flatten -> shape (L * N_tau,) = (6,).
+x_flat = populations.T.flatten()
+print("flat shape:", x_flat.shape)
+print(x_flat)
+print()
+print("Slots [0:N_tau]       -> n_1 at all depths:", x_flat[:N_tau])
+print("Slots [N_tau:2*N_tau] -> n_2 at all depths:", x_flat[N_tau:])
+\end{lstlisting}
+
+\grailOutLabel{3}
+\begin{lstlisting}[style=grailOutStyle]
+flat shape: torch.Size([6])
+tensor([0.9500, 0.9200, 0.8900, 0.0500, 0.0800, 0.1100], dtype=torch.float64)
+
+Slots [0:N_tau]       -> n_1 at all depths: tensor([0.9500, 0.9200, 0.8900], ...)
+Slots [N_tau:2*N_tau] -> n_2 at all depths: tensor([0.0500, 0.0800, 0.1100], ...)
+\end{lstlisting}
+
+\grailNote{The first \code{N\_tau} entries are level-1 populations across
+all depths.  The next \code{N\_tau} entries are level-2 populations across
+all depths.  For $L$ levels, the general indexing rule is:}
+
+\[
+  x_\text{flat}[k \cdot N_\tau + i] = n_{k+1}(\tau_i),
+  \quad k = 0, \ldots, L-1,\; i = 0, \ldots, N_\tau - 1.
+\]
+
+The indexing formula makes every slot traceable.
+
+\grailInLabel{4}
+\begin{lstlisting}[style=grailInStyle]
+# Verify the indexing formula: x_flat[k * N_tau + i] = n_{k+1}(tau_i).
+k, i = 1, 2   # level 2 (k=1), depth 2 (i=2)
+expected = populations[i, k]          # host-side access: populations[depth, level]
+actual   = x_flat[k * N_tau + i]      # GRAIL-side access
+print(f"populations[{i}, {k}] = {expected.item():.4f}")
+print(f"x_flat[{k}*{N_tau}+{i}] = x_flat[{k*N_tau+i}] = {actual.item():.4f}")
+print("match:", torch.isclose(expected, actual).item())
+\end{lstlisting}
+
+\grailOutLabel{4}
+\begin{lstlisting}[style=grailOutStyle]
+populations[2, 1] = 0.1100
+x_flat[1*3+2] = x_flat[5] = 0.1100
+match: True
+\end{lstlisting}
+
+Pass this vector as \code{x\_star} and \code{delta\_T} to
+\code{resolvent\_solve}.
+Every JVP callback must accept and return a vector in the same flat layout.
+
+% =============================================================================
+\section{The Unpack}
+\label{sec:unpack}
+% =============================================================================
+
+The inverse of \code{populations.T.flatten()} is
+\code{flat.reshape(L,\,N\_tau).T}.
+Every JVP callback begins by unpacking its input vector with this operation.
+
+Here is the complete round-trip.
+
+\grailInLabel{5}
+\begin{lstlisting}[style=grailInStyle]
+# Pack.
+x_flat = populations.T.flatten()   # (L*N_tau,)
+
+# Unpack.
+populations_recovered = x_flat.reshape(L, N_tau).T   # (N_tau, L)
+
+print("recovered:")
+print(populations_recovered)
+print("round-trip exact:", torch.allclose(populations, populations_recovered))
+\end{lstlisting}
+
+\grailOutLabel{5}
+\begin{lstlisting}[style=grailOutStyle]
+recovered:
+tensor([[0.9500, 0.0500],
+        [0.9200, 0.0800],
+        [0.8900, 0.1100]], dtype=torch.float64)
+round-trip exact: True
+\end{lstlisting}
+
+The round-trip is exact.
+Every JVP callback packs its output and unpacks its input.
+If either operation uses the wrong convention, GMRES produces a wrong
+$\delta x^*$.
+No error message appears.
+Run this round-trip check as a unit test before calling
+\code{resolvent\_solve}.
+
+% =============================================================================
+\section{Why \texttt{.T.flatten()} and Not \texttt{.flatten()}}
+\label{sec:why-transpose}
+% =============================================================================
+
+\code{populations.flatten()} (without the transpose) produces a different
+order.
+
+\grailInLabel{6}
+\begin{lstlisting}[style=grailInStyle]
+# WRONG: no transpose -- produces depth-major (interleaved) order.
+x_wrong = populations.flatten()
+print("wrong:", x_wrong)
+print("entry 0:", x_wrong[0], "<- n_1(tau_0)")
+print("entry 1:", x_wrong[1], "<- n_2(tau_0)  [level 2, not depth 1]")
+\end{lstlisting}
+
+\grailOutLabel{6}
+\begin{lstlisting}[style=grailOutStyle]
+wrong: tensor([0.9500, 0.0500, 0.9200, 0.0800, 0.8900, 0.1100], ...)
+entry 0: 0.9500 <- n_1(tau_0)
+entry 1: 0.0500 <- n_2(tau_0)  [level 2, not depth 1]
+\end{lstlisting}
+
+\code{populations.flatten()} interleaves levels and depths: the ordering is
+$n_1(\tau_0),\, n_2(\tau_0),\, n_1(\tau_1),\, n_2(\tau_1), \ldots$.
+GRAIL expects the opposite: one level across all depths, then the next.
+
+\grailInLabel{7}
+\begin{lstlisting}[style=grailInStyle]
+# CORRECT: transpose first, then flatten -- produces level-major order.
+x_right = populations.T.flatten()
+print("right:", x_right)
+print("entry 0:", x_right[0], "<- n_1(tau_0)")
+print("entry 1:", x_right[1], "<- n_1(tau_1)  [same level, next depth]")
+print("entry 3:", x_right[3], "<- n_2(tau_0)  [level 2 starts at index N_tau]")
+\end{lstlisting}
+
+\grailOutLabel{7}
+\begin{lstlisting}[style=grailOutStyle]
+right: tensor([0.9500, 0.9200, 0.8900, 0.0500, 0.0800, 0.1100], ...)
+entry 0: 0.9500 <- n_1(tau_0)
+entry 1: 0.9200 <- n_1(tau_1)  [same level, next depth]
+entry 3: 0.0500 <- n_2(tau_0)  [level 2 starts at index N_tau]
+\end{lstlisting}
+
+\begin{advisorybox}
+\textbf{Rule:} Use \code{populations.T.flatten()} to pack and
+\code{flat.reshape(L, N\_tau).T} to unpack.
+Both operations must appear, consistently, in every JVP callback.
+The interleaved \code{.flatten()} order is the most common layout bug.
+It passes all shape checks.
+It produces a silently wrong $\delta x^*$.
+\end{advisorybox}
+
+% =============================================================================
+\section{Multi-Level State Vectors}
+\label{sec:multiline}
+% =============================================================================
+
+The same convention applies for any $L$.
+The 3-level toy hydrogen atmosphere has $L = 3$ levels and $K = 2$ lines:
+Ly-$\alpha$ and H-$\alpha$.
+
+\grailInLabel{8}
+\begin{lstlisting}[style=grailInStyle]
+# 3-level example: N_tau = 4, L = 3.
+N_tau, L = 4, 3
+
+pops3 = torch.rand(N_tau, L, dtype=torch.float64)
+# Normalise rows so populations sum to 1.
+pops3 = pops3 / pops3.sum(dim=1, keepdim=True)
+
+x_flat3 = pops3.T.flatten()   # (L*N_tau,) = (12,)
+
+print("pops3 shape:", pops3.shape)
+print("flat  shape:", x_flat3.shape)
+print()
+print("Slots [0:N_tau]         = n_1 over depths:", x_flat3[:N_tau])
+print("Slots [N_tau:2*N_tau]   = n_2 over depths:", x_flat3[N_tau:2*N_tau])
+print("Slots [2*N_tau:3*N_tau] = n_3 over depths:", x_flat3[2*N_tau:])
+\end{lstlisting}
+
+\grailOutLabel{8}
+\begin{lstlisting}[style=grailOutStyle]
+pops3 shape: torch.Size([4, 3])
+flat  shape: torch.Size([12])
+
+Slots [0:N_tau]         = n_1 over depths: tensor([...], dtype=torch.float64)
+Slots [N_tau:2*N_tau]   = n_2 over depths: tensor([...], dtype=torch.float64)
+Slots [2*N_tau:3*N_tau] = n_3 over depths: tensor([...], dtype=torch.float64)
+\end{lstlisting}
+
+The indexing formula $x_\text{flat}[k \cdot N_\tau + i] = n_{k+1}(\tau_i)$
+holds for any $L$.
+GRAIL receives a vector of length $L \cdot N_\tau$.
+It never inspects $L$ directly.
+You carry $L$ in your callback closures.
+
+The mean radiation field $\bar J$ per spectral line uses a parallel
+convention.
+For a $K$-line atmosphere, the host-side array is \code{J\_bar\_lines} of
+shape \code{(N\_tau, K)}.
+
+\grailInLabel{9}
+\begin{lstlisting}[style=grailInStyle]
+# J_bar_lines convention: (N_tau, K) -> flat (K*N_tau,).
+N_tau, K = 4, 2   # 4 depths, 2 lines (Ly-alpha and H-alpha)
+
+J_bar_lines = torch.rand(N_tau, K, dtype=torch.float64)
+
+J_flat = J_bar_lines.T.flatten()   # (K*N_tau,)
+
+print("J_bar_lines shape:", J_bar_lines.shape)
+print("J_flat shape:     ", J_flat.shape)
+print()
+print("Slots [0:N_tau]       = J_bar_Lya over depths:", J_flat[:N_tau])
+print("Slots [N_tau:2*N_tau] = J_bar_Ha  over depths:", J_flat[N_tau:])
+\end{lstlisting}
+
+\grailOutLabel{9}
+\begin{lstlisting}[style=grailOutStyle]
+J_bar_lines shape: torch.Size([4, 2])
+J_flat shape:      torch.Size([8])
+
+Slots [0:N_tau]       = J_bar_Lya over depths: tensor([...], dtype=torch.float64)
+Slots [N_tau:2*N_tau] = J_bar_Ha  over depths: tensor([...], dtype=torch.float64)
+\end{lstlisting}
+
+\grailNote{The $\bar J$ flat layout is used inside host JVP callbacks to
+pack and unpack the radiation-field tangent, not in the GRAIL state vector
+itself.  The GRAIL state vector contains populations only.}
+
+In the 3-level host JVP, the callback receives a populations tangent of
+shape \code{(3*N\_tau,)}.
+It produces $\bar J$ tangents internally and returns a flat output of shape
+\code{(3*N\_tau,)}.
+The $\bar J$ flat layout appears only in the intermediate step.
+Chapter~\ref{ch:wrapping} shows the full wiring.
+
+% =============================================================================
+\section{Quick Reference}
+\label{sec:seam-ref}
+% =============================================================================
+
+The table below collects every layout operation in one place.
+
+\begin{argtable}
+\code{populations}          & \code{Tensor} & \code{(N\_tau, L)} &
+  Host-side array.  Row~$i$ holds all level populations at depth~$\tau_i$.
+  Dtype: float64. \\
+\code{populations.T.flatten()} & \code{Tensor} & \code{(L*N\_tau,)} &
+  GRAIL-side flat vector.  Entries \code{[k*N\_tau : (k+1)*N\_tau]} hold
+  $n_{k+1}(\tau)$ across all depths.  Pass as \code{x\_star} and
+  \code{delta\_T}. \\
+\code{flat.reshape(L,\,N\_tau).T} & \code{Tensor} & \code{(N\_tau, L)} &
+  Inverse of the pack.  Use at the start of every JVP callback to
+  recover the 2-D layout. \\
+\code{J\_bar\_lines}        & \code{Tensor} & \code{(N\_tau, K)} &
+  Host-side radiation field for $K$ spectral lines.  Row~$i$ holds the
+  $K$ line-averaged intensities at depth~$\tau_i$.  Dtype: float64. \\
+\code{J\_bar\_lines.T.flatten()} & \code{Tensor} & \code{(K*N\_tau,)} &
+  Flat layout of the radiation field.  Entries \code{[k*N\_tau :
+  (k+1)*N\_tau]} hold $\bar J_k(\tau)$ across all depths.  Used inside
+  host JVP callbacks; not part of the GRAIL state vector. \\
+\end{argtable}
+
+\grailInLabel{10}
+\begin{lstlisting}[style=grailInStyle]
+# Minimal correctness check -- run before every new integration.
+def check_seam(populations: torch.Tensor) -> bool:
+    """Return True if the pack/unpack round-trip is exact."""
+    N_tau, L = populations.shape
+    x_flat = populations.T.flatten()
+    recovered = x_flat.reshape(L, N_tau).T
+    return torch.allclose(populations, recovered)
+
+# Example: 2-level slab, 40 depth points.
+N_tau, L = 40, 2
+pops_test = torch.rand(N_tau, L, dtype=torch.float64)
+pops_test = pops_test / pops_test.sum(dim=1, keepdim=True)
+
+print("seam check:", check_seam(pops_test))
+\end{lstlisting}
+
+\grailOutLabel{10}
+\begin{lstlisting}[style=grailOutStyle]
+seam check: True
+\end{lstlisting}
+
+\grailNote{Add \code{assert check\_seam(populations)} as the first line
+of your integration test.  A failure here means the JVP callbacks will
+operate in the wrong coordinate system for every GMRES iteration.}
+
+Chapter~\ref{ch:wrapping} builds the full host JVP and emulator JVP on top
+of this convention.
+Each callback begins with \code{v\_pops = v.reshape(L, n\_tau).T} and ends
+with \code{return result.T.flatten()}.
+The seam is the only thing that makes those two lines safe.

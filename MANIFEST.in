@@ -1,0 +1,12 @@
+include LICENSE README.md pyproject.toml
+recursive-include docs *.md *.tex *.sty *.pdf
+recursive-include logo *.png
+recursive-include examples *.py *.md *.json *.pt *.npz *.h5
+recursive-include tests *.py *.h5
+recursive-include tools *.py
+recursive-include formalization *.lean *.toml *.json *.md *.py lean-toolchain
+prune examples/output
+prune examples/plot_data
+prune formalization/grail/.lake
+global-exclude *.pyc
+global-exclude .DS_Store

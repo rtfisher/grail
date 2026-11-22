@@ -1,0 +1,17 @@
+{
+  "description": "Structured two-level neural rate closure for software examples and regression tests",
+  "model_version": "twolevel-structured-rates-v1",
+  "parameters": 1252,
+  "data_seed": 2026111801,
+  "split_seed": 2026111802,
+  "training_seed": 2026111803,
+  "source": "examples/train_structured.py",
+  "training_data": "examples/data/structured/training.npz",
+  "known_physics": [
+    "affine scattering",
+    "positive thermal source",
+    "conserving population decoder"
+  ],
+  "checkpoint_sha256": "876693a15c5d56b5fd37adae00b3a54ab6d047ed17799d90938aee0fff8a7f1a",
+  "training_data_sha256": "eb517b533ef1265b58d63560a2aa757828a5099b4d1ad9dc258f7161173f766d"
+}

@@ -1,0 +1,84 @@
+{
+  "build_order": [
+    "Grail.CalibrationQuantile",
+    "Grail.Conformal",
+    "Grail.LocalResponse",
+    "Grail.Resolvent",
+    "Grail.JacobianResponse",
+    "Grail.Amplification",
+    "Grail"
+  ],
+  "theorems": [
+    {
+      "number": 1,
+      "title": "Small smooth perturbations shift regular fixed points by the resolvent response to first order",
+      "lean_declarations": [
+        "Grail.local_fixed_point_response_with_remainder"
+      ],
+      "supporting_declarations": [
+        "Grail.local_fixed_point_response",
+        "Grail.smooth_curve_quadratic_remainder"
+      ]
+    },
+    {
+      "number": 2,
+      "title": "The linear response remainder is second order in smooth local perturbation amplitude",
+      "lean_declarations": [
+        "Grail.local_response_with_explicit_remainder"
+      ],
+      "supporting_declarations": [
+        "Grail.norm_taylor_remainder_le",
+        "Grail.nonlinear_response_remainder_bound"
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Replacing K_t with K_e changes the resolvent by exactly G_e(K_e-K_t)G_t",
+      "lean_declarations": [
+        "Grail.jacobian_substitution_complete"
+      ],
+      "supporting_declarations": [
+        "Grail.jacobian_substitution_with_response",
+        "Grail.jacobian_prediction_isBigO",
+        "Grail.jacobian_prediction_quadratic_bound"
+      ]
+    },
+    {
+      "number": 4,
+      "title": "A cycle with spectral radius below one sums all linear feedback orders into its resolvent",
+      "lean_declarations": [
+        "Grail.neumann_feedback"
+      ],
+      "supporting_declarations": [
+        "Grail.neumann_response_full",
+        "Grail.real_matrix_neumann_full",
+        "Grail.matrix_spectrum_eigenvalue_bridge"
+      ]
+    },
+    {
+      "number": 5,
+      "title": "Worst-case amplification is the reciprocal least gain of the fixed-point restoration operator",
+      "lean_declarations": [
+        "Grail.worst_case_amplification"
+      ],
+      "supporting_declarations": [
+        "Grail.resolvent_amplification",
+        "Grail.real_matrix_resolvent_amplification",
+        "Grail.matrix_spectrum_eigenvalue_bridge",
+        "Grail.real_matrix_complexification_norm",
+        "Grail.real_matrix_complexification_normal"
+      ]
+    },
+    {
+      "number": 6,
+      "title": "Exchangeable split-conformal calibration covers the converged-state error with probability at least the nominal level",
+      "lean_declarations": [
+        "Grail.Conformal.split_conformal_coverage_sharp"
+      ],
+      "supporting_declarations": [
+        "Grail.Conformal.le_calibrationThreshold_iff",
+        "Grail.Conformal.exchangeable_coverage_count"
+      ]
+    }
+  ]
+}

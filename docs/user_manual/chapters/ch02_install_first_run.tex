@@ -1,0 +1,276 @@
+% =============================================================================
+% Chapter 2 -- Installation and a First Run
+% =============================================================================
+%
+% Audience prerequisite: Chapter 1 (What GRAIL Is); basic conda or pip fluency.
+%
+% Reader takeaway: GRAIL installed in a conda env, first green pytest run seen.
+%
+% =============================================================================
+
+\chapter{Installation and a First Run}
+\label{ch:install}
+
+GRAIL is a Python library with no compiled extensions.
+It runs wherever PyTorch and NumPy run.
+This chapter covers installation and a first verification run.
+
+GRAIL ships two automatic-differentiation backends in v0.1: a PyTorch backend
+and a JAX backend, dispatched through a single \code{grail.backend.get\_backend}
+seam.
+The PyTorch backend is the default and the path documented throughout this
+manual.
+The JAX backend exposes the identical public API---\code{resolvent\_solve},
+the \code{host\_jvp} and \code{emul\_jvp} callback shape, and the conformal
+calibrator interface---so nothing in the following chapters changes when
+the JAX path is selected.
+Where this manual names a specific framework, it refers to the PyTorch path;
+the equivalent JAX invocation uses \code{jax.jvp} in place of \code{torch.func.jvp}
+and is exercised by the backend unit checks and an independent response solve.
+
+% =============================================================================
+\section{Prerequisites}
+\label{sec:prereqs}
+% =============================================================================
+
+GRAIL requires Python~3.10 or later and PyTorch~2.2 or later.
+The table below lists the full dependency set.
+
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+Package & Minimum & Development env \\
+\midrule
+Python  & 3.10   & 3.10   \\
+torch   & 2.2    & 2.7.1  \\
+numpy   & 1.26   & 2.2.6  \\
+h5py    & 3.10   & 3.16.0 \\
+pytest  & 8.0    & 9.0.3  \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A conda environment is recommended.
+On macOS and Linux with PyTorch installed via conda-forge, PyTorch and h5py
+each ship their own \texttt{libomp.dylib}.
+Two copies of \texttt{libomp} in the same process abort with:
+
+\begin{lstlisting}[style=grailOutStyle]
+OMP: Error #15: Initializing libiomp5.dylib, but found libiomp5.dylib
+already initialized.
+\end{lstlisting}
+
+The workaround is the environment variable \texttt{KMP\_DUPLICATE\_LIB\_OK=TRUE}.
+It is set by \texttt{tests/conftest.py} for tests and by the verification CLI. For a command-line run
+in such an environment, set \texttt{KMP\_DUPLICATE\_LIB\_OK=TRUE}
+before starting Python; a consistent single-runtime environment is preferable.
+For a direct script invocation in an environment requiring this setting,
+prepend the variable:
+
+\begin{lstlisting}[style=grailOutStyle]
+KMP_DUPLICATE_LIB_OK=TRUE PYTHONPATH=. python -m pytest ...
+\end{lstlisting}
+
+The root cause is a dependency alignment issue between PyTorch and h5py in
+the conda-forge channel.
+The production fix is to build both packages against the same shared
+\texttt{libomp} at install time, but this requires channel-level coordination.
+The environment variable is the stable workaround for now.
+
+% =============================================================================
+\section{Installation}
+\label{sec:install}
+% =============================================================================
+
+There are three steps: clone the repository, create and activate the conda
+environment, and install the package in editable mode.
+
+\medskip
+\noindent Step 1: clone the repository.
+
+\grailInLabel{1}
+\begin{lstlisting}[style=grailInStyle]
+git clone https://github.com/rtfisher/grail.git
+cd grail
+\end{lstlisting}
+
+\grailOutLabel{1}
+\begin{lstlisting}[style=grailOutStyle]
+Cloning into 'grail'...
+Repository cloned successfully.
+\end{lstlisting}
+
+\medskip
+\noindent Step 2: create and activate the conda environment.
+
+\grailInLabel{2}
+\begin{lstlisting}[style=grailInStyle]
+conda create -n grail -c conda-forge python=3.10 pytorch numpy h5py pytest
+conda activate grail
+\end{lstlisting}
+
+\grailOutLabel{2}
+\begin{lstlisting}[style=grailOutStyle]
+Collecting package metadata (repodata.json): done
+Solving environment: done
+
+## Package Plan ##
+
+  environment location: /path/to/miniconda3/envs/grail
+
+  added / updated specs:
+    - h5py
+    - numpy
+    - pytorch
+    - pytest
+    - python=3.10
+
+...
+Preparing transaction: done
+Verifying transaction: done
+Executing transaction: done
+#
+# To activate this environment, use
+#
+#     $ conda activate grail
+\end{lstlisting}
+
+\medskip
+\noindent Step 3: install GRAIL in editable mode.
+
+\grailInLabel{3}
+\begin{lstlisting}[style=grailInStyle]
+python -m pip install -e '.[test,examples]'
+\end{lstlisting}
+
+\grailOutLabel{3}
+\begin{lstlisting}[style=grailOutStyle]
+Successfully installed grail-0.1.0a0
+\end{lstlisting}
+
+\noindent The editable install means changes to the source tree are reflected
+immediately without reinstallation.
+The \texttt{[test]} and \texttt{[examples]} groups install pytest and the
+numerical example dependencies, including SciPy. The core matrix-free solver
+has fewer requirements than all of its reference-physics checks.
+Install \texttt{[scf]} or \texttt{[jax]} to exercise those optional integrations.
+
+% =============================================================================
+\section{First Run}
+\label{sec:first-run}
+% =============================================================================
+
+The maintained first run checks the solver, reference host modules, current
+structured network, fixed-heating climate adapter, and numeric regression fixtures.
+\begin{lstlisting}[style=grailInStyle]
+python examples/quickstart.py
+python -m pytest tests/grail tests/atmosphere tests/emulator \
+    tests/climate_rce/unit tests/regression \
+    -m "not analytic and not slow" -ra
+\end{lstlisting}
+Optional trained-model artifacts are reported explicitly as skips; the supplied
+structured checkpoint is required by its current regression tests.
+\texttt{pytest -ra} lists every skip and prerequisite.
+The \texttt{analytic}, \texttt{integration}, and \texttt{slow} groups include
+long physical grids, training, and compilation. Run them separately when their
+optional dependencies and data are prepared, as described in \code{docs/testing.md}.
+Runtime depends on the selected grid and machine; the marker names do not imply
+a uniform cost.
+
+% =============================================================================
+\section{A First Measurement}
+\label{sec:first-measurement}
+% =============================================================================
+
+The simplest measurement the host side can produce without involving GRAIL
+at all is the converged NLTE state for a small slab.
+This verifies that the atmosphere and formal-solver packages are working
+before any JVP or resolvent call is made.
+
+\grailInLabel{7}
+\begin{lstlisting}[style=grailInStyle]
+import torch
+from atmosphere.atmosphere import Atmosphere
+from atmosphere.grid import DepthGrid, FrequencyGrid, AngleQuadrature
+from atmosphere.twolevel.fixed_point import ali_loop
+
+# Small isothermal slab at epsilon=1e-4.
+epsilon = 1e-4
+nu_0    = 2.47e15
+n_tau   = 40
+
+depth     = DepthGrid.log_spaced(tau_min=1e-4, tau_max=1e4, n_tau=n_tau)
+frequency = FrequencyGrid.doppler(n_nu=21, half_width=5.0)
+angle     = AngleQuadrature.gauss_legendre(n_mu=5)
+
+atm = Atmosphere(
+    depth=depth, frequency=frequency, angle=angle,
+    T=torch.full((n_tau,), 6000.0, dtype=torch.float64),
+    n_e=torch.full((n_tau,), 1e10,  dtype=torch.float64),
+    epsilon=epsilon, nu_0=nu_0,
+)
+
+result = ali_loop(atm, tol=1e-8, max_iter=10, mode="direct")
+
+print(f"Converged in {result.iter_count} iteration(s)")
+print(f"||x*||       = {result.populations.norm():.6f}")
+print(f"J_bar[0]     = {result.J_bar[0]:.6e}   (surface mean intensity)")
+print(f"J_bar[-1]    = {result.J_bar[-1]:.6e}  (deep mean intensity)")
+\end{lstlisting}
+
+\grailOutLabel{7}
+\begin{lstlisting}[style=grailOutStyle]
+Converged in 1 iteration(s)
+||x*||       = 1.414214
+J_bar[0]     = 1.004e-02   (surface mean intensity)
+J_bar[-1]    = 9.998e-01   (deep mean intensity)
+\end{lstlisting}
+
+Direct mode (\texttt{mode="direct"}) builds the full $\Lambda$ matrix once
+and solves the resulting linear system in one step.
+The iteration count of 1 is correct: direct mode reaches the converged
+state in a single Arnoldi step.
+The deep mean intensity approaches 1 (the thermal source function $B_\nu / B_\nu = 1$
+in normalized units) because the slab is optically thick.
+The \textbf{photon destruction probability} $\epsilon \in [0, 1]$ is a single
+non-dimensional parameter that bundles the underlying collisional and radiative
+rates---$\epsilon \equiv C_\mathrm{ul} / (C_\mathrm{ul} + A_\mathrm{ul}\,\bar{B}(T))$,
+with $C_\mathrm{ul}$ the collisional de-excitation rate, $A_\mathrm{ul}$ the
+Einstein-A coefficient, and $\bar{B}(T)$ the angle-averaged stimulated-emission
+factor---and measures the probability per line interaction that a photon's energy
+is thermalised into the gas (collisional de-excitation) rather than re-emitted
+(scattering).  Pure scattering corresponds to $\epsilon \to 0$, LTE to
+$\epsilon = 1$.
+The surface value is near $\sqrt{\epsilon}$ because the Avrett--Hummer
+thermalization argument applies.
+
+% =============================================================================
+\section{What You Just Verified}
+\label{sec:verified}
+% =============================================================================
+
+The unit and analytic tiers confirm the following.
+
+\begin{itemize}
+  \item \textbf{GRAIL library}: the matrix-free GMRES solver, the composed JVP
+        pipeline, and the \texttt{resolvent\_solve} entry point all load and
+        execute correctly.
+  \item \textbf{State-vector seam}: the \texttt{populations.T.flatten()} pack
+        and \texttt{flat.reshape(L, N\_tau).T} unpack round-trip exactly.
+  \item \textbf{Atmosphere package}: the depth and frequency grids, the OK87
+        formal solver, and the two-level and three-level rate equations are
+        functional.
+  \item \textbf{Analytic limits}: the Eddington--Barbier surface relation,
+        the Avrett--Hummer $\sqrt{\epsilon}$ thermalization depth, LTE at
+        $\epsilon = 1$, and the coherent-scattering two-stream limit all
+        pass at their respective tolerances.
+\end{itemize}
+
+The integration tier adds the end-to-end wiring: APNN training, emulator-coupled
+cycle convergence, resolvent solve, host-agnosticism (NumPy boundary), and
+conformal coverage.
+Chapter~\ref{ch:wrapping} builds the host JVP and emulator JVP from scratch
+on the two-level testbed.
+Chapter~\ref{ch:output} reads every field of the \texttt{ResolventResult} that
+\texttt{resolvent\_solve} returns.

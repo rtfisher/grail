@@ -1,0 +1,247 @@
+% =============================================================================
+% GRAIL User Manual
+% =============================================================================
+%
+% Compile:
+%   pdflatex grail_user_manual  (twice for ToC + cross-refs)
+%
+%
+% Toolchain: pdflatex only (no shell-escape, no biber, no minted).
+%            All packages match or are subsets of those in grail_reference_guide.tex.
+% =============================================================================
+
+\documentclass[11pt]{book}
+
+% -------------------------------------------------------------------------
+% Geometry and fonts
+% -------------------------------------------------------------------------
+\usepackage[margin=1in, top=1.1in, bottom=1.1in,
+            marginparwidth=1.4in, marginparsep=0.15in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+% -------------------------------------------------------------------------
+% Color
+% -------------------------------------------------------------------------
+\usepackage{xcolor}
+
+% -------------------------------------------------------------------------
+% Math
+% -------------------------------------------------------------------------
+\usepackage{amsmath,amssymb}
+
+% -------------------------------------------------------------------------
+% Hyperref
+% -------------------------------------------------------------------------
+\usepackage[colorlinks=true,
+            linkcolor=blue!60!black,
+            citecolor=blue!60!black,
+            urlcolor=blue]{hyperref}
+
+% -------------------------------------------------------------------------
+% Code listings  (no minted -- matches reference guide dependency set)
+% -------------------------------------------------------------------------
+\usepackage{listings}
+
+% -------------------------------------------------------------------------
+% Wolfram-style In/Out environments (defined in style/wolfram_io.sty)
+% -------------------------------------------------------------------------
+\usepackage{style/wolfram_io}
+
+% -------------------------------------------------------------------------
+% Tables and figures
+% -------------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{graphicx}
+
+% -------------------------------------------------------------------------
+% TikZ (for figures and flowcharts in later chapters)
+% -------------------------------------------------------------------------
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric,
+                decorations.pathreplacing,backgrounds}
+
+% -------------------------------------------------------------------------
+% Misc layout
+% -------------------------------------------------------------------------
+\usepackage{enumitem}
+\usepackage{marginnote}
+\usepackage{mdframed}           % shaded advisory boxes
+\setlist{nosep, leftmargin=*}
+
+% -------------------------------------------------------------------------
+% Chapter / section spacing
+% -------------------------------------------------------------------------
+\usepackage{titlesec}
+\titlespacing*{\chapter}{0pt}{30pt}{18pt}
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+
+% -------------------------------------------------------------------------
+% Math shorthands (mirrors reference guide for consistency)
+% -------------------------------------------------------------------------
+\newcommand{\Lop}{\Lambda}
+\newcommand{\Lstar}{\Lambda^{*}}
+\newcommand{\Tcyc}{\mathcal{T}}
+\newcommand{\Trt}{\Tcyc_{\mathrm{RT}}}
+\newcommand{\Tse}{\Tcyc_{\mathrm{SE}}}
+\newcommand{\dT}{\delta\mathcal{T}}
+\newcommand{\Jbar}{\bar{J}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+% -------------------------------------------------------------------------
+% Cross-reference macro to the Reference Guide
+%
+%   \refguide{section}{short description}
+%   Expands to: "see Reference Guide §section (short description)"
+%   rendered as a margin note.
+%
+%   Margin pointers refer to the accompanying technical guide.
+% -------------------------------------------------------------------------
+\newcommand{\refguide}[2]{%
+  \marginnote{\sloppy\raggedright\footnotesize\color{blue!55!black}%
+    $\rightarrow$~Ref.\ Guide\newline{\itshape #2}}%
+}
+
+% -------------------------------------------------------------------------
+% Advisory box (for pitfall sections)
+% -------------------------------------------------------------------------
+\newmdenv[
+  backgroundcolor=yellow!8,
+  linecolor=orange!60!black,
+  linewidth=1.2pt,
+  innerleftmargin=8pt,
+  innerrightmargin=8pt,
+  innertopmargin=6pt,
+  innerbottommargin=6pt,
+  skipabove=6pt,
+  skipbelow=6pt,
+]{advisorybox}
+
+% -------------------------------------------------------------------------
+% Argument table environment
+% -------------------------------------------------------------------------
+% Used for API argument tables: one-line summary of each parameter.
+% \begin{argtable}
+%   Argument & Type & Default & Description \\
+% \end{argtable}
+\newenvironment{argtable}{%
+  \small
+  \begin{longtable}{>{\ttfamily\raggedright}p{0.27\textwidth}
+                    >{\ttfamily}p{0.12\textwidth}
+                    >{\ttfamily}p{0.10\textwidth}
+                    p{0.40\textwidth}}
+  \toprule
+  \normalfont Argument & \normalfont Type & \normalfont Default & Description \\
+  \midrule
+  \endhead
+  \bottomrule
+  \endfoot
+}{%
+  \end{longtable}
+}
+
+% -------------------------------------------------------------------------
+% Title
+% -------------------------------------------------------------------------
+\title{User Manual}
+\author{R.~T.~Fisher\\
+  {\small Department of Physics, University of Massachusetts Dartmouth}\\
+  {\small \texttt{rfisher@umassd.edu}}}
+\date{Version 0.1.0a0}
+\hypersetup{pdftitle={GRAIL User Manual}, pdfauthor={R. T. Fisher}}
+\input{../grail_cover}
+
+% Stretch budget for paragraphs with long unbreakable monospace tokens.
+% 5em covers most API identifiers at 11pt.  File-path tokens longer than ~55 pt
+% remain beyond the budget and are flagged in refguide_audit.md.
+\emergencystretch=5em
+\tolerance=600
+
+% =============================================================================
+\begin{document}
+\sloppy
+% =============================================================================
+
+\frontmatter
+
+\makegrailcover{%
+  \normalsize Version 0.1.0a0 --- Installation and Integration}
+
+\tableofcontents
+
+\chapter*{Preface}
+\addcontentsline{toc}{chapter}{Preface}
+
+The examples use the public library and supplied technical reference hosts.
+
+This manual is the ``how'' companion to the GRAIL Reference Guide.
+No derivations appear here. Every concept is introduced by a runnable
+example; theory pointers appear as margin notes.
+
+\mainmatter
+
+% =============================================================================
+\part{Getting Started}
+% =============================================================================
+
+\input{chapters/ch01_what_grail_is}
+
+\input{chapters/ch02_install_first_run}
+
+\input{chapters/ch03_state_vector_seam}
+
+% =============================================================================
+\part{Using GRAIL}
+% =============================================================================
+
+\input{chapters/ch04_wrapping_your_host}
+
+\input{chapters/ch05_reading_output}
+
+\input{chapters/ch06_calibrating_coverage}
+
+% =============================================================================
+\part{Going Further}
+% =============================================================================
+
+\input{chapters/ch07_debugging}
+
+\input{chapters/ch08_performance}
+
+\input{chapters/ch09_recipes}
+
+\input{chapters/ch10_scf_example}
+
+% =============================================================================
+\backmatter
+% =============================================================================
+
+\chapter*{API Quick Reference}
+\addcontentsline{toc}{chapter}{API Quick Reference}
+The public entry point is \code{grail.resolvent\_solve}. Supply
+\code{x\_star}, \code{delta\_T}, \code{emulator\_jvp}, and
+\code{host\_jvp}. Optional keywords are \code{gmres\_tol},
+\code{gmres\_maxiter}, \code{gmres\_restart}, \code{preconditioner},
+and \code{backend}. The callback composition is
+\code{emulator\_jvp(host\_jvp(v))}.
+For an emulator-minus-reference residual, subtract the returned
+\code{delta\_x\_star} from the emulator state to estimate the reference.
+Solver diagnostics and the separate PCA/calibration layers are explained in
+Chapters~\ref{ch:output} and \ref{ch:coverage}.
+
+\chapter*{Glossary}
+\addcontentsline{toc}{chapter}{Glossary}
+\begin{description}
+\item[State vector] Independent physical coordinates exchanged by the coupled blocks.
+\item[Cycle residual] The difference between surrogate and reference complete-cycle outputs at the same state.
+\item[JVP] The action of a block derivative on an input perturbation.
+\item[Resolvent] The inverse restoration operator $(I-K)^{-1}$ of the linearized cycle.
+\item[Calibration error] Reference target minus the fixed prediction on a held-out configuration.
+\item[Exchangeability] Joint distribution invariant under permutations of the relevant calibration/test scores.
+\end{description}
+Published mathematical and physical references are collected in the companion
+Reference Guide bibliography.
+\end{document}

@@ -1,0 +1,87 @@
+\chapter{Calibrating Coverage}
+\label{ch:coverage}
+The resolvent supplies a leading-order response to a small smooth surrogate
+perturbation. It retains repeated linear feedback but leaves a prediction
+error to measure. Calibration uses that remaining error to construct intervals
+for a specified physical or numerical target.
+
+\section{Why Conformal Calibration}
+\label{sec:why-conformal}
+Fix the predictor, observable, and nonconformity score before using calibration
+labels. If calibration and test scores are exchangeable, split conformal provides
+a finite-sample marginal coverage guarantee. It does not guarantee the same
+coverage separately for every physical regime or for every individual state.
+Changing the deployment population requires separate justification or recalibration.
+
+\section{Residual Ensembles and Data Separation}
+\label{sec:residual-ensemble}
+For each calibration configuration, construct the corrected prediction using
+that configuration's available surrogate equilibrium, residual, and derivative
+callbacks. Independently solve the reference problem to obtain its target.
+The input to \code{split\_conformal} is the remaining reference-minus-prediction
+error, not simply the raw one-call surrogate residual.
+Training a network or fitting PCA uses a separate training partition.
+Hold calibration labels out of predictor selection and hyperparameter tuning.
+
+\section{Physical Sampling}
+\label{sec:stratified-sampling}
+Declare the physical population and draw calibration and test configurations by
+a compatible protocol. A positional split of an ordered parameter grid can
+produce different regimes in the two partitions. Stratification may balance a
+designed benchmark, but it does not by itself establish exchangeability or
+coverage for a different production population. Retain failed configurations
+and state how they affect the prediction rule and evaluation population.
+
+\section{Calling Split Conformal}
+\label{sec:calling-conformal}
+\code{split\_conformal(calibration\_residuals, test\_predictions, alpha=...)}
+returns a \code{ConformalBand} with \code{low}, \code{high},
+\code{alpha}, and \code{n\_calibration}.
+For vector targets the default score is the maximum absolute component error.
+One scalar threshold then defines a simultaneous coordinate box.
+The following complete example uses independent synthetic errors and fixed zero
+predictions; its coverage is illustrative, not a physical benchmark:
+\begin{lstlisting}[style=grailInStyle]
+python examples/calibration.py
+\end{lstlisting}
+It uses 100 calibration vectors and 128 independent test vectors. The example
+checks the threshold against a separately computed sorted order statistic and
+also tests the infinite-band case for two calibration samples.
+
+\section{Reading a Coverage Band}
+\label{sec:reading-coverage}
+The band surrounds the chosen prediction center. A GRAIL-corrected center is
+$x_e-\delta x^{*,\mathrm{pred}}$. Narrower calibrated bands can reflect a
+more accurate correction; they do not imply that physical feedback itself is
+weak. Compare prediction methods using the same targets, score, sampling
+population, and nominal coverage target. Actual coverage fractions fluctuate
+in finite test sets.
+The bands quantify the chosen surrogate-error target. Physical-model and
+discretization uncertainties require their own treatment.
+
+\section{PCA and Solve Count}
+\label{sec:pca-coverage}
+For one fixed linear response operator, propagate $r$ retained basis vectors
+once and cache their responses. Propagate a nonzero residual mean separately,
+then combine weights to approximate additional residual responses. This can
+reduce the number of distinct linear solves from one per residual to $r$ plus
+a mean solve. It is a solve-count comparison, not a measured wall-clock speedup.
+\code{propagate} calls its supplied response function once per retained basis
+vector on each invocation; the caller must arrange caching when reusing it.
+Different physical configurations generally have different operators, so their
+propagated bases cannot automatically share the same cache.
+Fit the basis using training residuals only. Truncation error remains part of
+the calibrated prediction error.
+
+\section{Exact Finite-Sample Threshold}
+\label{sec:finite-sample-limits}
+For $N_{\rm cal}$ calibration scores and miscoverage $\alpha$, use
+\begin{equation}
+ k=\left\lceil(N_{\rm cal}+1)(1-\alpha)\right\rceil.
+\end{equation}
+The radius is the $k$th sorted score when $k\le N_{\rm cal}$ and infinity
+otherwise. At nominal 90\% with two calibration samples, $k=3>2$, so the
+valid band is infinite. The extra order-statistic correction does not imply
+a universal percentage change in width; score spacing and tails determine
+that change. Choose sample sizes for the required application and report the
+observed width and held-out coverage.

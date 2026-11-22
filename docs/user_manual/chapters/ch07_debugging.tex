@@ -1,0 +1,415 @@
+% =============================================================================
+% Chapter 7 -- Debugging When Things Go Wrong
+% =============================================================================
+%
+% Audience prerequisite: any reader who has at least attempted one run.
+%
+% Reader takeaway: can identify the cause of a failure from its symptoms via
+%   the structured table, and knows the first two things to check before
+%   opening an issue.
+% =============================================================================
+
+\chapter{Debugging When Things Go Wrong}
+\label{ch:debug}
+
+\refguide{10.4}{Tier I: Integration}
+
+A \code{resolvent\_solve} call has a small number of ways to fail.
+Each failure has a distinct symptom in the \code{ResolventResult} fields.
+This chapter is a reference table: symptom, likely cause, and fix.
+
+% =============================================================================
+\section{Symptom--Cause--Fix Table}
+\label{sec:debug-table}
+% =============================================================================
+
+The table below covers the ten most common failure modes.
+Four of them (rows 1--4) are the canonical pitfalls from
+Section~\ref{sec:pitfalls} in Chapter~\ref{ch:wrapping}.
+Rows 5--10 are specific to GMRES behavior, conformal calibration, and
+environment setup.
+
+\medskip
+
+\noindent
+\begin{longtable}{p{0.28\textwidth} p{0.30\textwidth} p{0.33\textwidth}}
+\toprule
+\textbf{Symptom} & \textbf{Likely Cause} & \textbf{Fix} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\raggedright\arraybackslash
+GMRES converges (\texttt{residual\_history[-1] < gmres\_tol}) but
+\texttt{delta\_x\_star} makes things worse when added to
+\texttt{x\_star}.
+&
+\raggedright\arraybackslash
+State-vector packing order mismatch.
+The JVP unpacks or repacks the flat vector in depth-major order instead of
+level-major order.
+GMRES operates in the wrong coordinate system but the linear solve is
+internally consistent, so convergence is unaffected.
+&
+\raggedright\arraybackslash
+Run the round-trip test from \texttt{In[4]} in
+Chapter~\ref{ch:wrapping}:
+\texttt{assert torch.allclose(pops, x\_flat.reshape(L, N\_tau).T)}.
+Fix the transposition convention in every JVP callback.
+\\
+\raggedright\arraybackslash
+\texttt{torch.func.jvp} returns a zero tangent.
+The host JVP is zero regardless of the input direction \texttt{v}.
+&
+\raggedright\arraybackslash
+Autograd trace broken inside the function passed to
+\texttt{torch.func.jvp}.
+Common culprits: \texttt{.detach()} on the primal inside the function body;
+an in-place operation (\texttt{tensor[i] = ...}) on a non-leaf tensor;
+a NumPy round-trip that exits the computation graph.
+&
+\raggedright\arraybackslash
+Remove all \texttt{.detach()} calls from inside the JVP function body.
+Replace in-place operations with out-of-place equivalents.
+Remove NumPy round-trips inside the traced function; convert to NumPy
+only after returning from \texttt{torch.func.jvp}.
+\\
+\raggedright\arraybackslash
+\texttt{RuntimeError} about mixed float32 and float64, or GMRES
+converges far more slowly than expected (e.g., 100+ iterations at
+moderate $\epsilon$).
+&
+\raggedright\arraybackslash
+Float32 leaking from the APNN internal compute into the GMRES loop.
+The APNN operates in float32 internally; float32 outputs that reach
+GRAIL uncast silently lose eight decimal digits of GMRES precision.
+&
+\raggedright\arraybackslash
+Add \texttt{v = v.to(dtype=torch.float64)} as the first line of every
+JVP callback.
+Cast \texttt{x\_star} and \texttt{delta\_T} explicitly before
+passing them to \texttt{resolvent\_solve}.
+See the advisory box in Section~\ref{pit:dtype}.
+\\
+\raggedright\arraybackslash
+\texttt{delta\_x\_star} is near zero regardless of the input
+\texttt{delta\_T}, or has the right magnitude but the wrong sign.
+&
+\raggedright\arraybackslash
+\texttt{emulator\_jvp} uses the APNN's own autograd Jacobian instead of
+the truth SE Jacobian.
+An MSE-trained APNN matches truth function values to $\sim\!10^{-5}$
+relative, but its derivative can differ by $10^5\times$ because MSE
+training does not supervise derivatives.
+Using the APNN gradient in the GMRES operator gives a wrong answer.
+&
+\raggedright\arraybackslash
+\texttt{emulator\_jvp} must differentiate the \emph{truth} SE solver
+(e.g., \texttt{rate\_equation\_solve}), not the APNN.
+The APNN enters GRAIL only through \texttt{delta\_T}, the per-call
+residual.
+See Section~\ref{pit:jacobian} and \texttt{In[19]} in
+Chapter~\ref{ch:wrapping}.
+\\
+\raggedright\arraybackslash
+GMRES residual history is monotone decreasing but stagnates well above
+\texttt{gmres\_tol} (e.g., plateaus at $\sim 10^{-2}$--$10^{-3}$ and
+does not further decrease even at \texttt{gmres\_maxiter}).
+&
+\raggedright\arraybackslash
+Spectral radius of $D\Tcyc$ is at or above 1.
+This occurs at deep $\epsilon$ ($\lesssim 10^{-5}$) and large
+$\tau_\mathrm{max}$ ($\gtrsim 10^4$), where the cycle Jacobian has
+eigenvalues approaching 1 from below.
+The Krylov subspace cannot reduce the residual further without a
+preconditioner.
+&
+\raggedright\arraybackslash
+Add a $\Lambda^*$-style diagonal preconditioner to \texttt{resolvent\_solve}
+via the \texttt{preconditioner} argument.
+See Section~\ref{sec:precond} in Chapter~\ref{ch:perf} for the
+construction.
+As a quick check, verify the condition estimate:
+if \texttt{condition\_estimate > 1e3}, a preconditioner is warranted.
+\\
+\raggedright\arraybackslash
+GMRES residual grows after some initial decrease
+(\texttt{residual\_history} is non-monotone, with the final value larger
+than the minimum).
+&
+\raggedright\arraybackslash
+Floating-point instability in the GMRES update.
+The most common cause is a dtype inconsistency: float32 leaking into
+a float64 computation creates catastrophic cancellation in the Arnoldi
+orthogonalization.
+A secondary cause is a state-vector layout bug that produces a
+non-Hermitian effective operator.
+&
+\raggedright\arraybackslash
+Check dtype first (Pitfall~\ref{pit:dtype}).
+Then run the round-trip test (Pitfall~\ref{pit:layout}).
+Then check the JVP finite-difference consistency (Step~2 of the
+debugging recipe in Section~\ref{sec:debug-recipe} in
+Chapter~\ref{ch:wrapping}).
+\\
+\raggedright\arraybackslash
+\texttt{condition\_estimate} is \texttt{inf}.
+&
+\raggedright\arraybackslash
+This is not an error.
+\texttt{inf} means the Arnoldi Hessenberg has a zero singular value,
+which occurs when GMRES finds an exact solution in the current Krylov
+subspace.
+&
+\raggedright\arraybackslash
+No action needed.
+An \texttt{inf} condition estimate with a final residual below
+\texttt{gmres\_tol} is a healthy sign of fast convergence.
+\\
+\raggedright\arraybackslash
+\texttt{condition\_estimate > 1e12} with the final residual stuck above
+\texttt{gmres\_tol}.
+&
+\raggedright\arraybackslash
+The cycle's spectral radius is pinned at 1.
+At extreme $\epsilon$ ($\lesssim 10^{-6}$) the operator
+$(I - D\Tcyc)$ is nearly singular.
+&
+\raggedright\arraybackslash
+Add a preconditioner (Chapter~\ref{ch:perf} Section~\ref{sec:precond}).
+Alternatively, reduce \texttt{gmres\_tol} to a value that GMRES can
+actually reach, and accept that the correction is first-order only.
+Check that the atmosphere's $\tau_\mathrm{max}$ is inside the linearity
+validity regime.
+\\
+\raggedright\arraybackslash
+\texttt{||delta\_T||} is suspiciously small ($< 10^{-12}$).
+&
+\raggedright\arraybackslash
+\texttt{delta\_T} is computed against training data, not a held-out
+validation point.
+The APNN memorizes training inputs to machine precision, so
+$\dT$ at a training point is effectively zero.
+A near-zero \texttt{delta\_T} produces a near-zero \texttt{delta\_x\_star}
+regardless of the true amplification.
+&
+\raggedright\arraybackslash
+Compute \texttt{delta\_T = T\_emul(J\_bar) - T\_truth(J\_bar)} using a
+fresh validation $\bar{J}$ not seen during training.
+The standard practice is to generate 20\% of the training configs as a
+held-out validation set and use only those $\bar{J}$ values when
+computing \texttt{delta\_T}.
+\\
+\raggedright\arraybackslash
+\texttt{pytest} exits at collection with
+\texttt{OMP: Error \#15: Initializing libiomp5.dylib, but found
+libiomp5.dylib already initialized.}
+&
+\raggedright\arraybackslash
+PyTorch and h5py ship conflicting \texttt{libomp.dylib} copies in the
+conda environment.
+The dynamic linker initializes the library twice and aborts.
+&
+\raggedright\arraybackslash
+Set \texttt{KMP\_DUPLICATE\_LIB\_OK=TRUE} in the environment before
+launching pytest:
+\begin{lstlisting}[style=grailInStyle]
+KMP_DUPLICATE_LIB_OK=TRUE \
+    python -m pytest -m integration
+\end{lstlisting}
+The workaround is already applied programmatically in
+\texttt{tests/conftest.py} for test execution.
+The production fix is to align both packages against the same
+\texttt{libomp} at install time.
+\\
+
+\bottomrule
+\end{longtable}
+
+% =============================================================================
+\section{Reproducing a Failure Locally}
+\label{sec:repro-locally}
+% =============================================================================
+
+When a failure is intermittent or depends on a large ensemble, the fastest
+path to a fix is to minimize the reproducer to a single-config standalone
+script.
+A systematic binary-search halving works in all cases.
+
+The idea: run the full failing sweep, identify which half fails, discard
+the passing half, repeat until a single config remains.
+
+\grailInLabel{1}
+\begin{lstlisting}[style=grailInStyle]
+# Binary-search failure isolation on a list of configs.
+# 'configs' is a list of dicts with the parameters for one resolvent_solve call.
+# 'run_batch' returns a list of booleans (True = pass, False = fail).
+
+def bisect_failure(configs, run_batch, depth=0, max_depth=10):
+    """Returns the first failing config, or None if all pass."""
+    if len(configs) == 0 or depth >= max_depth:
+        return None
+    results = run_batch(configs)
+    if all(results):
+        return None   # All pass -- no failure in this batch.
+    if len(configs) == 1:
+        return configs[0]   # Isolated to one config.
+
+    mid = len(configs) // 2
+    left, right = configs[:mid], configs[mid:]
+    left_results, right_results = results[:mid], results[mid:]
+
+    if not all(left_results):
+        return bisect_failure(left, run_batch, depth + 1)
+    else:
+        return bisect_failure(right, run_batch, depth + 1)
+
+# Example: 16 configs from the epsilon sweep.
+epsilon_configs = [
+    {"epsilon": 10.0 ** (-k), "tau_max": 1e4, "n_tau": 40}
+    for k in range(2, 7)
+]
+
+def run_batch_stub(cfgs):
+    # Replace with your actual resolvent_solve call that returns True/False.
+    return [cfg["epsilon"] > 1e-5 for cfg in cfgs]
+
+failing = bisect_failure(epsilon_configs, run_batch_stub)
+print(f"Failing config isolated: {failing}")
+\end{lstlisting}
+
+\grailOutLabel{1}
+\begin{lstlisting}[style=grailOutStyle]
+Failing config isolated: {'epsilon': 1e-05, 'tau_max': 10000.0, 'n_tau': 40}
+\end{lstlisting}
+
+\noindent With the failing config isolated, build a standalone script that
+reproduces the failure in under 30 seconds:
+
+\grailInLabel{2}
+\begin{lstlisting}[style=grailInStyle]
+# Standalone failure reproducer template.
+# Replace the body with the actual failing config parameters.
+
+import os
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+import torch
+from grail import resolvent_solve
+
+# --- Config from binary search ---
+epsilon = 1e-5
+tau_max = 1e4
+n_tau   = 40
+
+# --- Minimal atmosphere ---
+from atmosphere.atmosphere import Atmosphere
+from atmosphere.grid import DepthGrid, FrequencyGrid, AngleQuadrature
+
+depth     = DepthGrid.log_spaced(tau_min=1e-4, tau_max=tau_max, n_tau=n_tau)
+frequency = FrequencyGrid.doppler(n_nu=11, half_width=5.0)
+angle     = AngleQuadrature.gauss_legendre(n_mu=3)
+atm = Atmosphere.isothermal(
+    T0=6000.0, n_e0=1e10, epsilon=epsilon, nu_0=2.47e15,
+    depth=depth, frequency=frequency, angle=angle,
+)
+
+# --- Minimal JVPs (copy-paste from your actual integration) ---
+# host_jvp = ...
+# emul_jvp = ...
+# x_star   = ...
+# delta_T  = ...
+
+# --- Call and inspect ---
+# result = resolvent_solve(x_star, delta_T, emul_jvp, host_jvp)
+# print(result.residual_history)
+# print(result.condition_estimate)
+print("Reproducer built. Plug in your JVPs and uncomment the call.")
+\end{lstlisting}
+
+\grailOutLabel{2}
+\begin{lstlisting}[style=grailOutStyle]
+Reproducer built. Plug in your JVPs and uncomment the call.
+\end{lstlisting}
+
+\grailNote{The standalone reproducer is the required minimum for a GitHub
+issue.
+Paste it into the issue body verbatim.
+If the reproducer takes longer than 30 seconds to reach the failure,
+halve \texttt{n\_tau} and \texttt{n\_nu} until it does.
+A reproducer that takes five minutes discourages fast turnaround.}
+
+% =============================================================================
+\section{Filing a GitHub Issue}
+\label{sec:github-issue}
+% =============================================================================
+
+When the table in Section~\ref{sec:debug-table} and the binary-search
+reproducer in Section~\ref{sec:repro-locally} do not resolve the failure,
+file a GitHub issue.
+Include the following.
+
+\begin{enumerate}
+  \item \textbf{The standalone reproducer} from Section~\ref{sec:repro-locally}.
+        Under 100 lines, runs in under 30 seconds, reproduces the failure without
+        external data files.
+
+  \item \textbf{The full \texttt{ResolventResult} field dump.}
+        Print every field:
+\grailInLabel{3}
+\begin{lstlisting}[style=grailInStyle]
+print(f"iter_count:         {result.iter_count}")
+print(f"residual_history:   {result.residual_history}")
+print(f"condition_estimate: {result.condition_estimate:.4e}")
+print(f"pca_rank:           {result.pca_rank}")
+print(f"delta_x_star norm:  {result.delta_x_star.norm():.4e}")
+print(f"delta_T norm:       {delta_T.norm():.4e}")
+print(f"x_star norm:        {x_star.norm():.4e}")
+\end{lstlisting}
+
+  \item \textbf{The GMRES residual history as a list.}
+        Copy the raw list, not a plot.
+        The shape of the curve (monotone decrease, stagnation plateau, growth)
+        determines the diagnostic category.
+
+  \item \textbf{The config parameters.}
+        At minimum: $\epsilon$, $\tau_\mathrm{max}$, $N_\tau$, $N_\nu$, $N_\mu$,
+        $L$ (number of atomic levels), and the APNN architecture (input/output
+        dimension, number of layers).
+
+  \item \textbf{The APNN checkpoint hash.}
+        If a trained checkpoint is involved, include
+        \texttt{sha256sum examples/data/structured/model.pt} or equivalent.
+        Checkpoint hashes let the maintainer reproduce the exact model.
+\grailInLabel{4}
+\begin{lstlisting}[style=grailInStyle]
+import hashlib, pathlib
+ckpt_path = pathlib.Path("examples/data/structured/model.pt")
+if ckpt_path.exists():
+    digest = hashlib.sha256(ckpt_path.read_bytes()).hexdigest()[:16]
+    print(f"APNN checkpoint sha256 prefix: {digest}")
+else:
+    print("No checkpoint found at examples/data/structured/model.pt")
+\end{lstlisting}
+
+  \item \textbf{The environment.}
+        Output of:
+\grailInLabel{5}
+\begin{lstlisting}[style=grailInStyle]
+import torch, numpy, sys
+print(f"Python:  {sys.version}")
+print(f"PyTorch: {torch.__version__}")
+print(f"NumPy:   {numpy.__version__}")
+\end{lstlisting}
+
+  \item \textbf{Which row in Section~\ref{sec:debug-table} best matches the symptom}
+        and why the suggested fix did not resolve it.
+        This narrows the triage immediately.
+
+\end{enumerate}
+
+\grailNote{Issues filed without a standalone reproducer are deprioritized.
+The maintainers cannot reproduce a failure from a description alone.
+A 50-line script that runs in 10 seconds is the single most helpful thing
+you can include.}
